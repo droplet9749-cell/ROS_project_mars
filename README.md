@@ -14,4 +14,4 @@ reboot
 
 ## 📄 발표 자료
 
-[👉 PDF 발표자료 보기](./ROS_project_mars/MARS_PROJECT_최종(수정).pdf)
+[![발표자료](./ROS_project_mars/preview.png)](./ROS_project_mars/MARS_PROJECT_최종(수정).pdf)
