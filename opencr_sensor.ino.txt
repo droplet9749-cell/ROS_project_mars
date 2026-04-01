@@ -1,0 +1,53 @@
+**opencr_sensor.ino**
+
+#include <DHT.h>
+
+#define DHTPIN 7        // DATA 핀
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
+
+int cdsPin = A0;        // CDS 아날로그 입력
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+}
+
+void loop() {
+
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+  int cds = analogRead(cdsPin);
+
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("ERROR");
+    return;
+  }
+
+  // ⭐ Raspberry Pi로 보낼 데이터 형식
+  Serial.print(temp);
+  Serial.print(",");
+  Serial.print(hum);
+  Serial.print(",");
+  Serial.println(cds);
+
+  delay(2000);
+}
+
+**opencr_serial.py**
+
+import serial
+
+ser = serial.Serial('/dev/ttyACM0', 115200)
+
+def read_opencr_sensor():
+    line = ser.readline().decode().strip()
+
+    try:
+        temp, hum, cds = line.split(",")
+
+        return float(temp), float(hum), int(cds)
+
+    except:
+        return None, None, None
