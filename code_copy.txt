@@ -1,0 +1,3 @@
+sudo apt install vim-gtk3
+vi .vimrc
+nnoremap <F5> :%y+<CR>
