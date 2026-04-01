@@ -1,6 +1,3 @@
 SELECT * FROM env_data ORDER BY id DESC LIMIT 5;
-
-
 ALTER TABLE env_data ADD COLUMN distance FLOAT;
-
 DESCRIBE env_data;
