@@ -21,8 +21,6 @@ for(int i=0;i<3;i++){
             (maxVal[i] - minVal[i] + 1);
 }
 
-sudo usermod -a -G dialout $USER
-reboot
 
 SELECT * FROM env_data ORDER BY id DESC LIMIT 5;
 
