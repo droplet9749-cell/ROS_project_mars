@@ -17,4 +17,4 @@ reboot
 
 > ROS2 기반 알약 배송 로봇 시스템 발표 자료
 
-[![presentation](./ROS_project_mars/preview.png)](./ROS_project_mars/MARS_PROJECT_final.pdf)
+[![presentation](./preview.png)](./MARS_PROJECT_final.pdf)
