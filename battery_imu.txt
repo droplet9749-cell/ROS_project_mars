@@ -1,0 +1,94 @@
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import BatteryState, Imu
+import math
+
+class SensorMonitor(Node):
+    def __init__(self):
+        super().__init__('sensor_monitor_node')
+
+        # 1. 토픽 구독자 생성
+        self.battery_sub = self.create_subscription(
+            BatteryState,
+            '/battery_state',
+            self.battery_cb,
+            10
+        )
+        self.imu_sub = self.create_subscription(
+            Imu,
+            '/imu',
+            self.imu_cb,
+            10
+        )
+       # IMU 초기 영점을 잡기 위한 변수 (Yaw 기준)
+        self.initial_yaw = None
+
+    def battery_cb(self, msg):
+        voltage = msg.voltage
+        # 터틀봇3는 0~100 스케일로 값을 주므로 곱하기 100을 하지 않습니다.
+        percentage = msg.percentage
+
+        self.get_logger().info(f'[배터리] 전압: {voltage:.2f}V, 잔량: {percentage:.1f}%')
+
+    def imu_cb(self, msg):
+        # 쿼터니언 변수 추출
+        x = msg.orientation.x
+        y = msg.orientation.y
+        z = msg.orientation.z
+	w = msg.orientation.w
+        # --- 1. Roll (X축 회전 - 좌우 갸우뚱 기울기) ---
+        sinr_cosp = 2.0 * (w * x + y * z)
+        cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+        roll_rad = math.atan2(sinr_cosp, cosr_cosp)
+
+        # --- 2. Pitch (Y축 회전 - 앞뒤 끄덕끄덕 경사도) ---
+        sinp = 2.0 * (w * y - z * x)
+        # 90도를 넘어갈 때 발생하는 수학적 오류(짐벌락) 방지 처리
+        if abs(sinp) >= 1:
+            pitch_rad = math.copysign(math.pi / 2, sinp)
+        else:
+            pitch_rad = math.asin(sinp)
+
+        # --- 3. Yaw (Z축 회전 - 좌우 도리도리 방향) ---
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+
+        # 라디안(Radian)을 우리가 보기 편한 도(Degree) 단위로 변환
+        roll_deg = math.degrees(roll_rad)
+        pitch_deg = math.degrees(pitch_rad)
+	yaw_deg = math.degrees(yaw_rad)
+
+        # --- 상대 각도(Relative Yaw) 계산 로직 ---
+        if self.initial_yaw is None:
+            self.initial_yaw = yaw_deg
+            self.get_logger().info(f'>> IMU 초기 영점 저장 완료: {self.initial_yaw:.1f}도 (이>제부터 방향은 0도로 계산됩니다)')
+            return
+
+        # 현재 각도에서 초기 각도를 빼서 0점 맞추기
+        relative_yaw = yaw_deg - self.initial_yaw
+
+        # 로봇이 돌다 보면 각도가 180도를 넘어갈 수 있으므로 -180 ~ +180 범위로 정규화
+        relative_yaw = (relative_yaw + 180.0) % 360.0 - 180.0
+
+        # 최종 결과 출력 (Roll, Pitch, Yaw 한 번에 보기)
+        self.get_logger().info(
+            f'[IMU] 경사(Pitch): {pitch_deg:5.1f}도 | 기울기(Roll): {roll_deg:5.1f}도 | 방향(Yaw): {relative_yaw:5.1f}도'
+        )
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SensorMonitor()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('센서 모니터링을 종료합니다.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+
+
