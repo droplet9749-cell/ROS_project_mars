@@ -11,3 +11,7 @@ Mars_explore_robot(charging_algorithm)
 ```bash
 sudo usermod -a -G dialout $USER
 reboot
+
+## 📄 발표 자료
+
+[👉 PDF 발표자료 보기](./ROS_project_mars/MARS_PROJECT_최종(수정).pdf)
