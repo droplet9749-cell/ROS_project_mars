@@ -12,6 +12,9 @@ Mars_explore_robot(charging_algorithm)
 sudo usermod -a -G dialout $USER
 reboot
 
-## 📄 발표 자료
 
-[![발표자료](./ROS_project_mars/preview.png)](./ROS_project_mars/MARS_PROJECT_최종(수정).pdf)
+## 🚀 Project Presentation
+
+> ROS2 기반 알약 배송 로봇 시스템 발표 자료
+
+[![presentation](./ROS_project_mars/preview.png)](./ROS_project_mars/MARS_PROJECT_최종(수정).pdf)
