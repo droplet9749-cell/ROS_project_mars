@@ -58,10 +58,3 @@ while True:
         print("JSON 깨짐 → skip")
     except Exception as e:
         print("Error:", e)
-
-
-sudo apt install vim-gtk3**
-
-vi .vimrc
-
-nnoremap <F5> :%y+<CR>
