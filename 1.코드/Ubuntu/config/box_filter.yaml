@@ -1,0 +1,13 @@
+scan_to_scan_filter_chain:
+  ros__parameters:
+    filter1:
+      name: robot_body_filter
+      type: laser_filters/LaserScanBoxFilter
+      params:
+        box_frame: base_scan   # 라이다 센서 자체를 중심으로 설정
+        max_x: 0.09            # 중심 기준 앞쪽 8cm
+        min_x: -0.09           # 중심 기준 뒤쪽 8cm
+        max_y: 0.09            # 중심 기준 좌측 8cm
+        min_y: -0.09           # 중심 기준 우측 8cm
+        max_z: 0.10            # Z축 상단 여유 (필요 시 조정)
+        min_z: -0.10           # Z축 하단 여유

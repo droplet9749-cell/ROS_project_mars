@@ -1,0 +1,208 @@
+#!/bin/bash
+# ~/bin/navi
+
+# ---------------- [환경 설정 구간] -----------------------
+# 1. ROS 2 기본 설치 환경 (혹시라도 .bashrc가 안 먹혔을 때를 대비)
+source /opt/ros/humble/setup.bash
+
+# 2. 내 터틀봇 프로젝트 환경 (setup.bash 사용 추천)
+source $HOME/turtlebot3_ws/install/setup.bash
+source $HOME/robot_ws/install/setup.bash
+
+export TURTLEBOT3_MODEL=burger
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# ---------------------------------------------------------
+
+# >> 사용법 정의 <<
+function show_usage {
+    echo "Usage: navi [sim | real] [local | remote] [slam | carto | drive] (map_name)"
+	echo ""
+	echo "  [MODE] 시뮬레이션 여부"
+    echo "      sim     : 가상 환경"
+    echo "      real    : 실제 로봇"
+    echo "  [VIEW] RViz 실행 여부"
+    echo "      local   : 우분투에서 RViz 켜기"
+    echo "      remote  : 맥북(Foxglove) 사용 (RViz 끔)"
+    echo "  [ACTION] 기존 지도 활용 여부"
+    echo "      slam : 새 지도를 그리며 자율주행(Navigation2 + SLAM Toolbox)"
+	echo "      carto   : 새 지도를 그리며 자율주행(미리 cartographer 켜놔야 함)"
+    echo "      drive   : 기존 지도를 불러와  자율주행(Navigation2 + .yaml)"
+	echo "  [MAP_NAME] drive 모드 시 입력! (불러올 .yaml 파일명)"
+	echo "                (예: navi sim remote drive my_map -> ~/my_map.yaml 로드)"
+    exit 1
+}
+
+# >> 명령어 유효성 검사 <<
+MODE=$1
+VIEW=$2
+ACTION=$3
+MAP_NAME=$4
+
+# MODE 검사
+if [[ "$MODE" != "sim" && "$MODE" != "real" ]]; then
+    show_usage
+fi
+
+# VIEW 검사
+if [[ "$VIEW" != "local" && "$VIEW" != "remote" ]]; then
+    show_usage
+fi
+
+# USE_SLAM 검사
+if [[ "$ACTION" != "slam" && "$ACTION" != "carto" && "$ACTION" != "drive" ]]; then
+    show_usage
+fi
+
+# 맵이 저장된 경로 작성 유무
+if [[ "$ACTION" == "drive" && -z $MAP_NAME ]]; then
+	echo "[Error] 주행(drive) 모드에서는 불러올 지도 이름이 필요합니다!"
+	show_usage
+fi
+
+
+# >> 변수 설정 <<
+SIM_TIME="False"
+[ "$MODE" == "sim" ] && SIM_TIME="True"
+
+USE_RVIZ="False"
+[ "$VIEW" == "local" ] && USE_RVIZ="True"
+
+USE_SLAM="False"
+[ "$ACTION" == "slam" ] && USE_SLAM="True"
+
+TURTLE_DIR="$HOME/robot_ws/src/project_mars/config/navi2.yaml"
+
+TARGET_MAP=""
+MAP_DIR="$HOME" # 맵 기본 저장 폴더 경로
+
+# 주행(drive) 모드일 때만 지도를 불러옵니다.
+if [ "$ACTION" == "drive" ]; then
+	# 맵이 저장된 경로 탐색
+	if [[ "$MAP_NAME" == *"/"* ]]; then
+    	# [1] 사용자가 경로를 직접 입력한 경우 (예: ~/maps/my_map.yaml)
+        TARGET_MAP="$MAP_NAME"
+	else
+		# [2] 이름만 입력한 경우
+		TARGET_MAP="$MAP_DIR/${MAP_NAME}.yaml"
+	fi
+
+	# 파일 존재 여부 확인
+    if [ ! -f "$TARGET_MAP" ]; then
+        echo " [Error] 지도를 찾을 수 없습니다: $TARGET_MAP"
+
+    fi
+fi
+# ---------------------------------------------------------
+# >> 프로세스 종료 안전장치 (Trap) <<
+# Ctrl+C를 누르면 켜져 있는 RViz2와 관련 노드들을 깔끔하게 정리합니다.
+trap 'echo -e "\n [종료 중] 모든 프로세스를 안전하게 종료합니다..."; pkill -f bringup_launch; pkill -f navigation_launch; pkill -f rviz2; pkill -f laser_filters; exit 0' INT TERM EXIT
+# ---------------------------------------------------------
+# >> 실행 << 
+echo "----------------------------------------"
+echo " Navigation2 실행"
+echo " • 모드: $MODE (Time: $SIM_TIME)"
+echo " • 화면: $VIEW (Rviz: $USE_RVIZ)"
+echo " • 주행 모드: $ACTION (SLAM: $USE_SLAM)"
+if [ "$ACTION" == "drive" ]; then
+	echo " • 맵 : $TARGET_MAP"
+fi
+echo "----------------------------------------"
+
+# 1. RViz2 백그라운드 자동 실행
+if [ "$USE_RVIZ" == "True" ]; then
+    echo " [Info] Ubuntu용 RViz2를 백그라운드에서 실행합니다..."
+    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz > /dev/null 2>&1 &
+fi
+
+# 2. Nav2 및 SLAM 백그라운드 실행 (명령어 끝에 & 추가됨!)
+if [ "$ACTION" == "slam" ]; then
+    echo " [1] Nav2 내장 SLAM(SLAM Toolbox) 및 주행 실행 중..."
+    ros2 launch nav2_bringup bringup_launch.py \
+                    use_sim_time:=$SIM_TIME \
+                    slam:=True \
+                    map:=dummy \
+                    params_file:=$TURTLE_DIR > /tmp/nav2_debug.log 2>&1 &
+
+elif [ "$ACTION" == "carto" ]; then
+    echo " [2] 외부 SLAM 연동용 순수 주행(Nav Only) 실행 중..."
+    ros2 launch nav2_bringup navigation_launch.py \
+                    use_sim_time:=$SIM_TIME \
+                    slam:=False \
+                    params_file:=$TURTLE_DIR > /tmp/nav2_debug.log 2>&1 &
+
+elif [ "$ACTION" == "drive" ]; then
+    echo " [3] 기존 지도 기반 주행 실행 중..."
+    ros2 launch nav2_bringup bringup_launch.py \
+                    use_sim_time:=$SIM_TIME \
+                    map:=$TARGET_MAP \
+                    params_file:=$TURTLE_DIR > /tmp/nav2_debug.log 2>&1 &
+fi
+
+# 3. [논리적 제어] 라이다 데이터가 네트워크에 올라올 때까지 스마트하게 대기
+echo -n " [Info] 라이다 및 로봇 뼈대(TF) 통신 연결 확인 중..."
+while ! ros2 topic list | grep -q -E "^/scan$"; do
+    sleep 0.5
+done
+echo " [연결 완료!]"
+
+
+# 4. 레이저 필터 안전 실행
+# TF가 완전히 생성된 후 실행되므로, 절대로 튕기지 않습니다.
+echo " [Info] 레이저 필터(기둥 지우기) 가동!"
+ros2 run laser_filters scan_to_scan_filter_chain --ros-args --params-file $HOME/robot_ws/src/project_mars/config/box_filter.yaml &
+# 5. 스크립트 무한 대기 (Ctrl+C로 종료할 때까지 유지)
+wait
+
+#echo " [Info] 레이저 필터(기둥 지우기) 자동 가동 중..."
+#ros2 run laser_filters scan_to_scan_filter_chain --ros-args --params-file $HOME/robot_ws/src/project_mars/config/box_filter.yaml > /dev/null 2>&1 &
+#ros2 run laser_filters scan_to_scan_filter_chain --ros-args --params-file $HOME/robot_ws/src/project_mars/config/box_filter.yaml &
+#sleep 1 # 필터 노드가 켜질 시간을 1초 벌어줍니다.
+
+# local 모드일 때 RViz2 백그라운드 자동 실행!
+#if [ "$USE_RVIZ" == "True" ]; then
+#    echo " [Info] Ubuntu용 RViz2를 백그라운드에서 실행합니다..."
+#ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz > /dev/null 2>&1 &
+#    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz &
+#fi
+
+#if [ "$ACTION" == "slam" ]; then
+#	echo " [1] Nav2 내장 SLAM(SLAM Toolbox) 및 주행 실행 중..."
+#	ros2 launch nav2_bringup bringup_launch.py \
+#			use_sim_time:=$SIM_TIME \
+#			slam:=True \
+#			map:=dummy \
+#			params_file:=$TURTLE_DIR
+
+#elif [ "$ACTION" == "carto" ]; then
+#	echo " [2] 외부 SLAM 연동용 순수 주행(Nav Only) 실행 중..."
+#	ros2 launch nav2_bringup navigation_launch.py \
+#			use_sim_time:=$SIM_TIME \
+#			params_file:=$TURTLE_DIR
+#
+#elif [ "$ACTION" == "drive" ]; then
+#	echo " [3] 기존 지도 기반 주행 실행 중..."
+#    ros2 launch nav2_bringup bringup_launch.py \
+#			use_sim_time:=$SIM_TIME \
+#			map:=$TARGET_MAP \
+#			params_file:=$TURTLE_DIR
+#fi
+
+# 2. Cartographer 충돌 방지 (중요!)
+# 만약 cartographer가 실수로 켜져 있다면 강제로 끕니다.
+#if pgrep -f "cartographer_node" > /dev/null; then
+#    echo "[경고] Cartographer가 실행 중입니다. 충돌 방지를 위해 종료합니다..."
+#    pkill -f "cartographer_node"
+#    sleep 2
+#fi
+
+# 2. 지도 노드 감지 (스마트 기능)
+# 이미 지도를 그리는 노드가 켜져 있다면, 중복 실행을 막기 위해 SLAM을 끕니다.
+#if pgrep -f "cartographer_node" > /dev/null; then
+#    echo "Cartographer 감지됨 -> SLAM 끄고 Navigation만 실행합니다."
+#    SLAM_OPT="False"
+#elif pgrep -f "slam_toolbox" > /dev/null; then
+#    echo "SLAM Toolbox 감지됨 -> SLAM 끄고 Navigation만 실행합니다."
+#    SLAM_OPT="False"
+#else
+#    echo " 지도 노드 없음 -> Navigation이 SLAM을 직접 켭니다."
+#fi

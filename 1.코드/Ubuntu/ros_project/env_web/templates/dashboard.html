@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Env Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .card { padding: 16px; border: 1px solid #ddd; border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    th { background: #fafafa; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h2>환경 데이터 대시보드</h2>
+<div class="card">
+  <h3 style="margin-bottom:8px;">그래프 (최근 데이터)</h3>
+
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px;">
+    <label>
+      조회:
+      <select id="rangeSelect">
+        <option value="limit:300">최근 300개</option>
+        <option value="limit:600">최근 600개</option>
+        <option value="minutes:1">최근 1분</option>
+        <option value="minutes:5">최근 5분</option>
+        <option value="minutes:10" selected>최근 10분</option>
+        <option value="minutes:30">최근 30분</option>
+        <option value="minutes:60">최근 1시간</option>
+      </select>
+    </label>
+
+    <label>
+      자동 업데이트:
+      <select id="refreshSelect">
+        <option value="0">끔</option>
+        <option value="2000">2초</option>
+        <option value="5000" selected>5초</option>
+        <option value="10000">10초</option>
+      </select>
+    </label>
+
+    <span style="margin-left:auto; font-size:12px; opacity:0.7;" id="statusText">Idle</span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+    <label><input type="checkbox" id="toggleCds1" checked> CDS1</label>
+    <label><input type="checkbox" id="toggleCds2" checked> CDS2</label>
+    <label><input type="checkbox" id="toggleCds3" checked> CDS3</label>
+    <label><input type="checkbox" id="toggleDist" checked> Distance</label>
+    <label><input type="checkbox" id="toggleIr" checked> IR</label>
+    <label><input type="checkbox" id="toggleGas" checked> GAS</label>
+  </div>
+
+  <div class="card">
+  <h3>그래프 (최근 데이터)</h3>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+    <div>
+      <h4>Temperature</h4>
+      <canvas id="chartTemp"></canvas>
+    </div>
+    <div>
+      <h4>Humidity</h4>
+      <canvas id="chartHum"></canvas>
+    </div>
+  </div>
+
+  <div style="height:16px;"></div>
+
+  <div>
+    <h4>CDS (1/2/3)</h4>
+    <canvas id="chartCds"></canvas>
+  </div>
+
+  <div style="height:16px;"></div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;">
+    <div>
+      <h4>Distance</h4>
+      <canvas id="chartDist"></canvas>
+    </div>
+    <div>
+      <h4>IR</h4>
+      <canvas id="chartIr"></canvas>
+    </div>
+    <div>
+      <h4>GAS</h4>
+      <canvas id="chartGas"></canvas>
+    </div>
+  </div>
+</div>
+
+  <div class="card">
+    <h3>최근 50개 데이터</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>시간</th>
+          <th>온도</th>
+          <th>습도</th>
+          <th>CDS1</th>
+          <th>CDS2</th>
+          <th>CDS3</th>
+          <th>거리</th>
+          <th>IR</th>
+          <th>GAS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.created_at }}</td>
+          <td>{{ r.temperature }}</td>
+          <td>{{ r.humidity }}</td>
+          <td>{{ r.cds1 }}</td>
+          <td>{{ r.cds2 }}</td>
+          <td>{{ r.cds3 }}</td>
+          <td>{{ r.distance }}</td>
+          <td>{{ r.ir }}</td>
+          <td>{{ r.gas }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+<script>
+  let charts = {};
+  let refreshTimer = null;
+
+  function buildQuery() {
+    const v = document.getElementById("rangeSelect").value; // e.g. "minutes:10" or "limit:300"
+    const [k, n] = v.split(":");
+    return k === "minutes" ? `minutes=${encodeURIComponent(n)}` : `limit=${encodeURIComponent(n)}`;
+  }
+
+  async function fetchData() {
+    const qs = buildQuery();
+    const res = await fetch(`/api/env?${qs}`);
+    if (!res.ok) throw new Error("API 호출 실패: " + res.status);
+    return await res.json();
+  }
+
+  function makeLineChart(canvasId, labels, datasets) {
+    const ctx = document.getElementById(canvasId);
+    return new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        animation: false,
+        plugins: { legend: { display: true } },
+        scales: { x: { ticks: { maxTicksLimit: 8 } } },
+        elements: { point: { radius: 0 } }
+      }
+    });
+  }
+
+  function setStatus(text) {
+    document.getElementById("statusText").textContent = text;
+  }
+
+  function updateChart(chart, labels, datasets) {
+    chart.data.labels = labels;
+    chart.data.datasets = datasets;
+    chart.update();
+  }
+
+  function getToggles() {
+    return {
+      cds1: document.getElementById("toggleCds1").checked,
+      cds2: document.getElementById("toggleCds2").checked,
+      cds3: document.getElementById("toggleCds3").checked,
+      dist: document.getElementById("toggleDist").checked,
+      ir: document.getElementById("toggleIr").checked,
+      gas: document.getElementById("toggleGas").checked,
+    };
+  }
+
+  async function renderOrUpdate() {
+    setStatus("Loading...");
+    const data = await fetchData();
+    const labels = data.time;
+    const toggles = getToggles();
+
+    // Temp
+    const tempDs = [{ label: "Temperature (°C)", data: data.temperature, tension: 0.2 }];
+    if (!charts.temp) charts.temp = makeLineChart("chartTemp", labels, tempDs);
+    else updateChart(charts.temp, labels, tempDs);
+
+    // Hum
+    const humDs = [{ label: "Humidity (%)", data: data.humidity, tension: 0.2 }];
+    if (!charts.hum) charts.hum = makeLineChart("chartHum", labels, humDs);
+    else updateChart(charts.hum, labels, humDs);
+
+    // CDS (toggle 반영)
+    const cdsDs = [];
+    if (toggles.cds1) cdsDs.push({ label: "CDS1", data: data.cds1, tension: 0.2 });
+    if (toggles.cds2) cdsDs.push({ label: "CDS2", data: data.cds2, tension: 0.2 });
+    if (toggles.cds3) cdsDs.push({ label: "CDS3", data: data.cds3, tension: 0.2 });
+    if (!charts.cds) charts.cds = makeLineChart("chartCds", labels, cdsDs);
+    else updateChart(charts.cds, labels, cdsDs);
+
+    // Distance / IR / GAS (각각 차트는 유지하되 토글로 “숨김” 느낌)
+    const distCanvas = document.getElementById("chartDist").parentElement;
+    distCanvas.style.display = toggles.dist ? "" : "none";
+    if (toggles.dist) {
+      const distDs = [{ label: "Distance", data: data.distance, tension: 0.2 }];
+      if (!charts.dist) charts.dist = makeLineChart("chartDist", labels, distDs);
+      else updateChart(charts.dist, labels, distDs);
+    }
+
+    const irCanvas = document.getElementById("chartIr").parentElement;
+    irCanvas.style.display = toggles.ir ? "" : "none";
+    if (toggles.ir) {
+      const irDs = [{ label: "IR", data: data.ir, tension: 0.2 }];
+      if (!charts.ir) charts.ir = makeLineChart("chartIr", labels, irDs);
+      else updateChart(charts.ir, labels, irDs);
+    }
+
+    const gasCanvas = document.getElementById("chartGas").parentElement;
+    gasCanvas.style.display = toggles.gas ? "" : "none";
+    if (toggles.gas) {
+      const gasDs = [{ label: "GAS", data: data.gas, tension: 0.2 }];
+      if (!charts.gas) charts.gas = makeLineChart("chartGas", labels, gasDs);
+      else updateChart(charts.gas, labels, gasDs);
+    }
+
+    const now = new Date();
+    setStatus(`Last update: ${now.toLocaleTimeString()}`);
+  }
+
+  function applyAutoRefresh() {
+    const ms = parseInt(document.getElementById("refreshSelect").value, 10);
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
+
+    if (ms > 0) {
+      refreshTimer = setInterval(() => {
+        renderOrUpdate().catch(err => {
+          console.error(err);
+          setStatus("Update failed: " + err.message);
+        });
+      }, ms);
+    }
+  }
+
+  function bindUI() {
+    document.getElementById("rangeSelect").addEventListener("change", () => {
+      renderOrUpdate().catch(console.error);
+    });
+
+    document.getElementById("refreshSelect").addEventListener("change", () => {
+      applyAutoRefresh();
+    });
+
+    // 토글은 바로 반영
+    ["toggleCds1","toggleCds2","toggleCds3","toggleDist","toggleIr","toggleGas"].forEach(id => {
+      document.getElementById(id).addEventListener("change", () => {
+        renderOrUpdate().catch(console.error);
+      });
+    });
+  }
+
+  // 시작
+  (async () => {
+    bindUI();
+    await renderOrUpdate();
+    applyAutoRefresh();
+  })();
+ </script>
+  </body>
+</html>

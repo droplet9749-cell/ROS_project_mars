@@ -1,0 +1,70 @@
+#!/bin/bash
+# ~/bin/explore
+
+# ---------------- [환경 설정 구간] -----------------------
+# 1. ROS 2 기본 설치 환경 (혹시라도 .bashrc가 안 먹혔을 때를 대비)
+source /opt/ros/humble/setup.bash
+
+# 2. 내 터틀봇 프로젝트 환경 (setup.bash 사용 추천)
+source $HOME/turtlebot3_ws/install/setup.bash
+# ---------------------------------------------------------
+
+# >> 사용법 정의 <<
+
+function show_usage {
+    echo "Usage: explore  [sim | real]"
+    echo "  1. 가상으로 구동: sim"
+    echo "  2. 실제로 구동: real"
+    
+    exit 1
+}
+
+# >> 명령어 유효성 검사 <<
+
+MODE=$1
+
+# >> 변수 설정 <<
+SIM_TIME=""
+
+if [ "$MODE" == "sim" ]; then
+    SIM_TIME="True"
+	echo "[가상 환경] 탐사(Explore) 모드를 시작합니다. (use_sim_time=True)"
+elif [ "$MODE" == "real" ]; then
+    SIM_TIME="False"
+	echo "[실제 로봇] 탐사(Explore) 모드를 시작합니다. (use_sim_time=False)"
+else
+    show_usage
+fi
+
+# ---------------------------------------------------------
+# >> 안전 장치 <<
+# Nav2 실행 여부 안전장치
+# Nav2(controller_server)가 없으면 탐사가 불가능하므로 실행을 차단합니다.
+echo -n " [Info] Navigation2 시스템 응답 대기 중..."
+# Nav2의 핵심 행동 트리 서버가 열려있는지 확인 (보통 이게 켜지면 Nav2가 다 켜진 것)
+if ! ros2 action list | grep -q "/navigate_to_pose"; then
+    echo ""
+    echo " [Error] Navigation2가 완전히 켜지지 않았습니다!"
+    echo " -> 'navi $MODE ...' 스크립트가 완전히 로딩될 때까지 기다렸다가 다시 실행해주세요."
+    exit 1
+fi
+echo " [확인 완료!]"
+#if ! pgrep -f "controller_server" > /dev/null; then
+#if ! ros2 node list | grep -q "controller_server"; then
+#	echo " [Error] Navigation2가 켜져 있지 않습니다!"
+#    echo " -> 먼저 새 터미널에서 'navi $MODE remote carto' 또는 'slam' 모드를 실행해주세요."
+#    exit 1
+#fi
+
+# ---------------------------------------------------------
+# >> 실행 <<
+echo "[탐사 시작] 미지의 영역을 찾아 떠납니다! (use_sim_time: $SIM_TIME, explore_lite)"
+ros2 launch explore_lite explore.launch.py use_sim_time:=$SIM_TIME
+
+# Nav2 실행 여부 안전장치
+# Nav2가 없으면 탐사가 불가능하므로 미리 경고합니다.
+#if ! pgrep -f "controller_server" > /dev/null; then
+#    echo "[오류] Navigation이 실행되지 않았습니다!"
+#    echo " 먼저 'navi $1'을 실행해주세요."
+#    exit 1
+#fi
