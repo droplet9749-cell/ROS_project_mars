@@ -22,15 +22,8 @@ for(int i=0;i<3;i++){
 }
 
 
-SELECT * FROM env_data ORDER BY id DESC LIMIT 5;
 
-
-ALTER TABLE env_data ADD COLUMN distance FLOAT;
-
-DESCRIBE env_data;
--------------------------------------------------------------
-
-raw 로 출력했을 때 split 발생했을 때 수정 코드 ↓↓
+#raw 로 출력했을 때 split 발생했을 때 수정 코드 ↓↓
 
 while True:
     try:
@@ -65,12 +58,7 @@ while True:
         print("JSON 깨짐 → skip")
     except Exception as e:
         print("Error:", e)
---------------------------------------------------------------------------------
 
-다음으로 바로 이어서 갈까?
-
-👉 "Flask 실시간 최신 센서 캐시 구조 (터틀봇용 필수 구조)"
-**이거 해두면 팀원 TurtleBot 환경 넘어가도 코드 거의 안 바뀐다.
 
 sudo apt install vim-gtk3**
 
