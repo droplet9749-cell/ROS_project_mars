@@ -15,6 +15,6 @@ reboot
 
 ## 🚀 Project Presentation
 
-> ROS2 기반 알약 배송 로봇 시스템 발표 자료
+> ROS기반 화성 탐사 로봇 발표자료
 
 [![presentation](./preview.png)](./MARS_PROJECT_final.pdf)
